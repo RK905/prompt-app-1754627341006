@@ -1,0 +1,516 @@
+# This file tells GitHub Pages not to use Jekyll processing
+# Since we're serving static files (HTML, CSS, JS), we don't need Jekyll
+
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Current Weather — PWA</title>
+  <meta name="description" content="A simple progressive web app showing current weather conditions." />
+  <meta name="theme-color" content="#2b90d9" />
+  <style>
+    :root{
+      --bg:#e9f5ff;
+      --card:#ffffff;
+      --accent:#2b90d9;
+      --muted:#6b7280;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+    }
+    html,body{height:100%;margin:0;background:linear-gradient(180deg,var(--bg),#f6fbff);color:#0b1220}
+    .wrap{max-width:720px;margin:28px auto;padding:20px;}
+    header{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
+    h1{font-size:1.1rem;margin:0;color:var(--accent)}
+    .sub{color:var(--muted);font-size:0.9rem}
+    .card{background:var(--card);border-radius:12px;padding:18px;box-shadow:0 6px 18px rgba(15,22,40,0.08)}
+    .row{display:flex;gap:16px;align-items:center}
+    .main{display:flex;gap:18px;align-items:center}
+    .icon{width:96px;height:96px;flex:0 0 96px;display:flex;align-items:center;justify-content:center}
+    .temp{font-size:2.6rem;font-weight:700;color:#102a43}
+    .desc{font-size:1rem;color:var(--muted)}
+    .meta{display:flex;gap:12px;margin-top:8px;color:var(--muted);font-size:0.95rem}
+    button{background:var(--accent);color:#fff;border:0;padding:8px 12px;border-radius:8px;cursor:pointer;font-weight:600}
+    button.secondary{background:#f1f5f9;color:#0b1220}
+    .controls{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
+    .search{display:flex;gap:8px;margin-top:12px}
+    input[type="search"]{flex:1;padding:10px;border-radius:10px;border:1px solid #e6eef9;background:#fbfeff}
+    .status{margin-top:10px;color:var(--muted);font-size:0.9rem}
+    .offline{color:#b45309;background:#fff7ed;padding:8px;border-radius:8px;margin-top:10px}
+    footer{margin-top:18px;color:var(--muted);font-size:0.85rem;text-align:center}
+    .small{font-size:0.85rem;color:var(--muted)}
+    .add-btn{background:#0ea5a4}
+    @media (max-width:520px){
+      .main{flex-direction:row}
+      .icon{width:76px;height:76px}
+      .temp{font-size:2rem}
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div>
+        <h1>Current Weather</h1>
+        <div class="sub">Real-time conditions • Offline support • Add to home screen</div>
+      </div>
+      <div id="install-container"></div>
+    </header>
+
+    <div class="card" id="app">
+      <div class="row main">
+        <div class="icon" id="weather-icon" aria-hidden="true">
+          <!-- SVG icon injected here -->
+        </div>
+        <div>
+          <div style="display:flex;align-items:baseline;gap:10px">
+            <div class="temp" id="temp">--°C</div>
+            <div>
+              <div id="place" style="font-weight:700">Unknown</div>
+              <div class="desc" id="condition">Awaiting data...</div>
+            </div>
+          </div>
+
+          <div class="meta" id="meta">
+            <div id="wind">— wind</div>
+            <div id="time">—</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="search" role="search" aria-label="Search city">
+        <input type="search" id="query" placeholder="Search city (e.g. London) or use location" />
+        <button id="searchBtn" class="secondary">Search</button>
+        <button id="locBtn">Use my location</button>
+        <button id="refreshBtn" class="secondary">Refresh</button>
+      </div>
+
+      <div class="controls">
+        <button id="cacheClear" class="secondary">Clear cached data</button>
+        <div class="status" id="status">Status: online</div>
+      </div>
+
+      <div id="offlineNote" class="offline" style="display:none">
+        You're offline. Showing last known conditions if available.
+      </div>
+
+    </div>
+
+    <footer>
+      <div class="small">Data provided by Open-Meteo • No API key required.</div>
+      <div style="margin-top:6px" class="small">Designed as a small PWA demo for current conditions.</div>
+    </footer>
+  </div>
+
+<script>
+/*
+  Self-contained single-file PWA behavior:
+  - Creates and links a web manifest blob
+  - Registers an in-memory service worker blob
+  - Uses Open-Meteo APIs (no API key) for current weather and geocoding
+  - Persists last successful weather in localStorage for offline display
+*/
+
+(async function(){
+  // Helper: map weather codes to simple description and icon (basic)
+  const weatherMap = {
+    0: {icon: 'sun', desc: 'Clear sky'},
+    1: {icon: 'partly-cloudy', desc: 'Mainly clear'},
+    2: {icon: 'partly-cloudy', desc: 'Partly cloudy'},
+    3: {icon: 'cloudy', desc: 'Overcast'},
+    45: {icon: 'fog', desc: 'Fog'},
+    48: {icon: 'fog', desc: 'Depositing rime fog'},
+    51: {icon: 'drizzle', desc: 'Light drizzle'},
+    53: {icon: 'drizzle', desc: 'Moderate drizzle'},
+    55: {icon: 'drizzle', desc: 'Dense drizzle'},
+    56: {icon: 'freezing-drizzle', desc: 'Freezing drizzle'},
+    57: {icon: 'freezing-drizzle', desc: 'Freezing drizzle'},
+    61: {icon: 'rain', desc: 'Slight rain'},
+    63: {icon: 'rain', desc: 'Moderate rain'},
+    65: {icon: 'rain', desc: 'Heavy rain'},
+    66: {icon: 'freezing-rain', desc: 'Freezing rain'},
+    67: {icon: 'freezing-rain', desc: 'Freezing rain'},
+    71: {icon: 'snow', desc: 'Slight snow'},
+    73: {icon: 'snow', desc: 'Moderate snow'},
+    75: {icon: 'snow', desc: 'Heavy snow'},
+    77: {icon: 'snow', desc: 'Snow grains'},
+    80: {icon: 'rain', desc: 'Rain showers'},
+    81: {icon: 'rain', desc: 'Rain showers'},
+    82: {icon: 'rain', desc: 'Violent rain showers'},
+    85: {icon: 'snow', desc: 'Snow showers'},
+    86: {icon: 'snow', desc: 'Snow showers'},
+    95: {icon: 'thunder', desc: 'Thunderstorm'},
+    96: {icon: 'thunder', desc: 'Thunder with hail'},
+    99: {icon: 'thunder', desc: 'Thunder with hail'},
+  };
+
+  const el = {
+    temp: document.getElementById('temp'),
+    place: document.getElementById('place'),
+    condition: document.getElementById('condition'),
+    wind: document.getElementById('wind'),
+    time: document.getElementById('time'),
+    icon: document.getElementById('weather-icon'),
+    status: document.getElementById('status'),
+    offlineNote: document.getElementById('offlineNote'),
+    query: document.getElementById('query'),
+    searchBtn: document.getElementById('searchBtn'),
+    locBtn: document.getElementById('locBtn'),
+    refreshBtn: document.getElementById('refreshBtn'),
+    cacheClear: document.getElementById('cacheClear'),
+    installContainer: document.getElementById('install-container'),
+  };
+
+  // Create and attach manifest dynamically (single-file friendly)
+  const manifestObj = {
+    name: "Current Weather",
+    short_name: "Weather",
+    description: "Current weather conditions with offline caching.",
+    start_url: ".",
+    display: "standalone",
+    background_color: "#e9f5ff",
+    theme_color: "#2b90d9",
+    icons: [
+      {
+        src: "data:image/svg+xml;utf8," + encodeURIComponent(svgIcon('sun',64)),
+        sizes: "64x64",
+        type: "image/svg+xml"
+      },
+      {
+        src: "data:image/svg+xml;utf8," + encodeURIComponent(svgIcon('partly-cloudy',192)),
+        sizes: "192x192",
+        type: "image/svg+xml"
+      }
+    ]
+  };
+  const manifestBlob = new Blob([JSON.stringify(manifestObj)],{type:'application/json'});
+  const manifestURL = URL.createObjectURL(manifestBlob);
+  const link = document.createElement('link');
+  link.rel = 'manifest';
+  link.href = manifestURL;
+  document.head.appendChild(link);
+
+  // Implement beforeinstallprompt UX
+  let deferredPrompt = null;
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    deferredPrompt = e;
+    showInstallButton();
+  });
+
+  function showInstallButton(){
+    if(!deferredPrompt) return;
+    const btn = document.createElement('button');
+    btn.className = 'add-btn';
+    btn.textContent = 'Add to home screen';
+    btn.onclick = async () => {
+      deferredPrompt.prompt();
+      const choice = await deferredPrompt.userChoice;
+      if(choice && choice.outcome){
+        btn.textContent = (choice.outcome === 'accepted') ? 'Installed' : 'Dismissed';
+        btn.disabled = true;
+      }
+    };
+    el.installContainer.appendChild(btn);
+  }
+
+  // Create and register service worker from a blob (single-file)
+  const swCode = `
+    const CACHE_NAME = 'weather-pwa-v1';
+    const OFFLINE_PAGE = '/';
+    const ASSETS = ['/', '/index.html']; // single-file setup
+
+    self.addEventListener('install', event => {
+      self.skipWaiting();
+      event.waitUntil(
+        caches.open(CACHE_NAME).then(cache => {
+          return cache.addAll(ASSETS).catch(()=>{ /* ignore if not available */ });
+        })
+      );
+    });
+
+    self.addEventListener('activate', event => {
+      event.waitUntil(self.clients.claim());
+    });
+
+    self.addEventListener('fetch', event => {
+      const url = new URL(event.request.url);
+
+      // Network-first for API calls to open-meteo so we can cache latest
+      if(url.hostname && url.hostname.includes('open-meteo.com')) {
+        event.respondWith(
+          fetch(event.request).then(resp => {
+            if(resp && resp.ok){
+              const copy = resp.clone();
+              caches.open(CACHE_NAME).then(cache => cache.put(event.request, copy));
+            }
+            return resp;
+          }).catch(() => caches.match(event.request))
+        );
+        return;
+      }
+
+      // For navigation and same-origin assets, try network, fallback to cache
+      if(event.request.mode === 'navigate' || (event.request.method === 'GET' && event.request.destination === 'document')) {
+        event.respondWith(
+          fetch(event.request).catch(() => caches.match(OFFLINE_PAGE))
+        );
+        return;
+      }
+
+      // For other requests, try cache first then network
+      event.respondWith(
+        caches.match(event.request).then(cached => {
+          return cached || fetch(event.request).then(resp => {
+            // cache resources for future
+            return caches.open(CACHE_NAME).then(cache => {
+              try{ cache.put(event.request, resp.clone()); }catch(e){}
+              return resp;
+            });
+          }).catch(()=>cached);
+        })
+      );
+    });
+  `;
+
+  try {
+    const swBlob = new Blob([swCode], {type:'application/javascript'});
+    const swUrl = URL.createObjectURL(swBlob);
+    if('serviceWorker' in navigator){
+      await navigator.serviceWorker.register(swUrl).catch(err=>{
+        console.warn('Service worker registration failed:', err);
+      });
+    }
+  } catch(err){
+    console.warn('Service worker setup failed', err);
+  }
+
+  // Utility functions
+  function svgIcon(name, size=96, color='#2b90d9'){
+    // Simple inline SVG generator for icons used in manifest and UI
+    const s = size;
+    const sun = `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64' width='${s}' height='${s}'><circle cx='32' cy='32' r='12' fill='${color}'/><g stroke='${color}' stroke-width='3' stroke-linecap='round'><line x1='32' y1='2' x2='32' y2='14'/><line x1='32' y1='50' x2='32' y2='62'/><line x1='2' y1='32' x2='14' y2='32'/><line x1='50' y1='32' x2='62' y2='32'/><line x1='10' y1='10' x2='18' y2='18'/><line x1='46' y1='46' x2='54' y2='54'/><line x1='10' y1='54' x2='18' y2='46'/><line x1='46' y1='18' x2='54' y2='10'/></g></svg>`;
+    const cloud = `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64' width='${s}' height='${s}'><path d='M20 44h28a10 10 0 0 0 0-20 14 14 0 0 0-27-2 8 8 0 0 0-1 1A10 10 0 0 0 20 44z' fill='${color}'/></svg>`;
+    const rain = `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64' width='${s}' height='${s}'><path d='M18 34h28a9 9 0 0 0 0-18 13 13 0 0 0-25-2 8 8 0 0 0-1 1A9 9 0 0 0 18 34z' fill='${color}'/><g fill='${color}'><path d='M24 44c1 3 2 6 0 8-2 2-4 0-5-2-1-2 0-5 1-7 1-2 3-1 4 1z'/><path d='M38 45c1 3 2 6 0 8-2 2-4 0-5-2-1-2 0-5 1-7 1-2 3-1 4 1z'/><path d='M50 44c1 3 2 6 0 8-2 2-4 0-5-2-1-2 0-5 1-7 1-2 3-1 4 1z'/></g></svg>`;
+    const partly = `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64' width='${s}' height='${s}'><circle cx='22' cy='22' r='10' fill='${color}'/><path d='M30 36h22a8 8 0 0 1 0 16H18a10 10 0 0 1 12-16z' fill='${color}' opacity='0.95'/></svg>`;
+    const fog = `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64' width='${s}' height='${s}'><path d='M12 36h40v4H12zM8 14h48v4H8zM10 26h44v4H10z' fill='${color}'/></svg>`;
+    const thunder = `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64' width='${s}' height='${s}'><path d='M28 6l-12 28h14l-2 24 18-28H36z' fill='${color}'/></svg>`;
+    switch(name){
+      case 'sun': return sun;
+      case 'cloud': return cloud;
+      case 'rain': return rain;
+      case 'partly-cloudy': return partly;
+      case 'fog': return fog;
+      case 'thunder': return thunder;
+      default: return sun;
+    }
+  }
+
+  function setIcon(code){
+    const info = weatherMap[code] || {icon:'cloud', desc:'Unknown'};
+    el.icon.innerHTML = svgIcon(info.icon,96);
+    el.condition.textContent = info.desc;
+  }
+
+  function setStatus(text, online=true){
+    el.status.textContent = 'Status: ' + text;
+    if(!online){
+      el.offlineNote.style.display = 'block';
+    } else {
+      el.offlineNote.style.display = 'none';
+    }
+  }
+
+  function formatTime(iso){
+    try{
+      const d = new Date(iso);
+      return d.toLocaleString();
+    }catch(e){return iso}
+  }
+
+  // Save / load last weather
+  function saveLast(data){
+    try{ localStorage.setItem('lastWeather', JSON.stringify(data)); }catch(e){}
+  }
+  function loadLast(){
+    try{ return JSON.parse(localStorage.getItem('lastWeather') || 'null'); }catch(e){return null}
+  }
+  function clearLast(){
+    try{ localStorage.removeItem('lastWeather'); }catch(e){}
+    setStatus('cache cleared', navigator.onLine);
+    refreshUIFromLast();
+  }
+
+  function refreshUIFromLast(){
+    const last = loadLast();
+    if(!last){
+      el.temp.textContent = '--°C';
+      el.place.textContent = 'Unknown';
+      el.condition.textContent = 'No cached data';
+      el.wind.textContent = '';
+      el.time.textContent = '';
+      setIcon(null);
+      return;
+    }
+    el.temp.textContent = Math.round(last.temperature) + '°C';
+    el.place.textContent = last.place || (last.lat && last.lon ? `${last.lat.toFixed(4)}, ${last.lon.toFixed(4)}`: 'Unknown');
+    el.time.textContent = last.time ? formatTime(last.time) : '';
+    el.wind.textContent = last.windspeed ? `${last.windspeed} m/s` : '';
+    setIcon(last.weathercode);
+    setStatus('offline (cached)', false);
+  }
+
+  // Fetch weather from open-meteo
+  async function fetchWeather(lat, lon){
+    const url = \`https://api.open-meteo.com/v1/forecast?latitude=\${lat}&longitude=\${lon}&current_weather=true\`;
+    try{
+      const res = await fetch(url);
+      if(!res.ok) throw new Error('Network response not OK');
+      const json = await res.json();
+      if(json && json.current_weather){
+        const w = json.current_weather;
+        const payload = {
+          temperature: w.temperature,
+          windspeed: w.windspeed,
+          weathercode: w.weathercode,
+          lat, lon,
+          time: w.time
+        };
+        // Reverse geocode to get place name
+        try{
+          const rev = await fetch(\`https://geocoding-api.open-meteo.com/v1/reverse?latitude=\${lat}&longitude=\${lon}&count=1\`);
+          if(rev && rev.ok){
+            const rj = await rev.json();
+            if(rj && rj.results && rj.results.length) payload.place = rj.results[0].name + (rj.results[0].country ? ', ' + rj.results[0].country : '');
+          }
+        }catch(e){}
+        saveLast(payload);
+        return payload;
+      }
+      throw new Error('No current weather in response');
+    }catch(err){
+      console.warn('Weather fetch failed',err);
+      throw err;
+    }
+  }
+
+  // Geocode city name -> coordinates
+  async function geocodeCity(name){
+    const url = \`https://geocoding-api.open-meteo.com/v1/search?name=\${encodeURIComponent(name)}&count=5&language=en\`;
+    const res = await fetch(url);
+    if(!res.ok) throw new Error('Geocode failed');
+    const json = await res.json();
+    if(json && json.results && json.results.length){
+      // prefer exact match else first
+      return json.results[0];
+    }
+    throw new Error('No match found');
+  }
+
+  // Main UI update
+  async function updateWeatherFor(lat, lon, source='manual'){
+    setStatus('loading...', navigator.onLine);
+    try{
+      const data = await fetchWeather(lat, lon);
+      el.temp.textContent = Math.round(data.temperature) + '°C';
+      el.place.textContent = data.place || \`\${lat.toFixed(3)},\${lon.toFixed(3)}\`;
+      el.time.textContent = formatTime(data.time);
+      el.wind.textContent = data.windspeed ? \`\${data.windspeed} m/s\` : '';
+      setIcon(data.weathercode);
+      setStatus('updated', navigator.onLine);
+    }catch(err){
+      setStatus('could not fetch live data', navigator.onLine);
+      // show cached if available
+      refreshUIFromLast();
+      throw err;
+    }
+  }
+
+  // Geolocation wrapper
+  function useGeolocation(){
+    if(!navigator.geolocation){
+      setStatus('geolocation not supported', navigator.onLine);
+      return;
+    }
+    setStatus('getting location...', navigator.onLine);
+    navigator.geolocation.getCurrentPosition(async pos=>{
+      const lat = pos.coords.latitude;
+      const lon = pos.coords.longitude;
+      try{
+        await updateWeatherFor(lat, lon, 'geolocation');
+      }catch(e){}
+    }, err=>{
+      setStatus('location denied or unavailable', navigator.onLine);
+    }, {enableHighAccuracy:true, timeout:15000});
+  }
+
+  // Wire up UI interactions
+  el.locBtn.addEventListener('click', useGeolocation);
+  el.refreshBtn.addEventListener('click', async ()=>{
+    const last = loadLast();
+    if(last && last.lat !== undefined){
+      try{ await updateWeatherFor(last.lat, last.lon); }catch(e){}
+    } else {
+      useGeolocation();
+    }
+  });
+  el.cacheClear.addEventListener('click', clearLast);
+
+  el.searchBtn.addEventListener('click', async ()=>{
+    const q = el.query.value.trim();
+    if(!q) return;
+    setStatus('searching...', navigator.onLine);
+    try{
+      const place = await geocodeCity(q);
+      if(place && place.latitude && place.longitude){
+        await updateWeatherFor(place.latitude, place.longitude, 'search');
+      } else setStatus('no location found', navigator.onLine);
+    }catch(e){
+      setStatus('search failed', navigator.onLine);
+    }
+  });
+
+  // handle Enter key for search
+  el.query.addEventListener('keydown', (e)=>{ if(e.key === 'Enter') el.searchBtn.click(); });
+
+  // Online/offline UI
+  window.addEventListener('online', ()=>{ setStatus('online', true); refreshUIFromLast(); });
+  window.addEventListener('offline', ()=>{ setStatus('offline', false); refreshUIFromLast(); });
+
+  // Initialize: if have cached last show it quickly, then try to update
+  const last = loadLast();
+  if(last){
+    el.temp.textContent = Math.round(last.temperature) + '°C';
+    el.place.textContent = last.place || \`\${last.lat},\${last.lon}\`;
+    el.time.textContent = last.time ? formatTime(last.time) : '';
+    el.wind.textContent = last.windspeed ? \`\${last.windspeed} m/s\` : '';
+    setIcon(last.weathercode);
+    setStatus(navigator.onLine ? 'restored cached' : 'offline (cached)', navigator.onLine);
+    if(navigator.onLine){
+      // try to refresh
+      try{
+        await updateWeatherFor(last.lat, last.lon);
+      }catch(e){}
+    }
+  } else {
+    // no cached - try geolocation or show instructions
+    if(navigator.onLine){
+      setStatus('ready • try location or search', true);
+    } else {
+      setStatus('offline • no cached data', false);
+    }
+  }
+
+  // On first load, try to get geolocation permission quietly to offer immediate data
+  if(!last && navigator.geolocation){
+    // try but don't block
+    navigator.geolocation.getCurrentPosition(async pos=>{
+      if(pos && (pos.coords.latitude || pos.coords.longitude)){
+        try{ await updateWeatherFor(pos.coords.latitude, pos.coords.longitude); }catch(e){}
+      }
+    }, ()=>{}, {timeout:8000});
+  }
+
+})();
+</script>
+</body>
+</html>

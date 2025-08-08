@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Weather Now — Current Conditions</title>
+    <meta name="description" content="A progressive web app that shows current weather conditions for your location or searched cities." />
+    <meta name="theme-color" content="#0ea5e9" />
+    <link rel="manifest" href="manifest.json">
+    <link href="style.css" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gradient-to-b from-sky-50 to-white text-slate-900 min-h-screen antialiased">
+    <div id="app" class="container mx-auto px-4 py-8 max-w-xl">
+        <header class="flex items-center justify-between mb-6">
+            <h1 class="text-2xl font-bold text-sky-700 flex items-center gap-3">
+                <svg class="w-8 h-8 text-sky-500" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden>
+                    <path d="M3 12a7 7 0 0114 0h1a4 4 0 010 8H6a6 6 0 010-12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+                Weather Now
+            </h1>
+            <button id="btnInstall" class="hidden bg-sky-600 text-white px-3 py-1 rounded-md text-sm">Install</button>
+        </header>
+
+        <main class="space-y-4">
+            <div id="offlineBanner" class="hidden rounded-md bg-yellow-50 border border-yellow-200 text-yellow-800 px-3 py-2 text-sm">
+                You're offline — showing last available data (if any).
+            </div>
+
+            <section class="bg-white rounded-xl shadow p-4">
+                <form id="searchForm" class="flex gap-2 items-center mb-3" aria-label="Search city">
+                    <label for="searchInput" class="sr-only">Search city</label>
+                    <input id="searchInput" class="flex-1 rounded-md border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-300" placeholder="Search city (e.g., London)" />
+                    <button id="btnSearch" type="submit" class="bg-sky-600 text-white px-3 py-2 rounded-md text-sm">Search</button>
+                    <button id="btnLocate" type="button" title="Use my location" class="ml-1 bg-white border border-slate-200 px-3 py-2 rounded-md text-slate-700 hover:bg-slate-50" aria-label="Use my location">
+                        <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 2v4M12 18v4M4.9 4.9l2.8 2.8M16.3 16.3l2.8 2.8M2 12h4M18 12h4M4.9 19.1l2.8-2.8M16.3 7.7l2.8-2.8" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                    </button>
+                </form>
+
+                <div class="flex items-center justify-between">
+                    <div>
+                        <h2 id="locationName" class="text-lg font-semibold text-slate-800">Detecting location…</h2>
+                        <p id="updatedAt" class="text-xs text-slate-500 mt-1">—</p>
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <div class="text-right">
+                            <div class="text-4xl font-extrabold" id="tempValue">--</div>
+                            <div class="text-sm text-slate-500">
+                                <button id="unitC" class="unit-toggle font-medium text-sky-600">°C</button>
+                                <span class="text-slate-400">|</span>
+                                <button id="unitF" class="unit-toggle text-slate-500">°F</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-4 grid grid-cols-3 gap-3 text-sm text-slate-700">
+                    <div class="col-span-1 bg-sky-50 rounded-md p-3 text-center">
+                        <div id="weatherIcon" class="text-2xl mb-1" aria-hidden>☀️</div>
+                        <div id="description" class="font-medium">—</div>
+                    </div>
+                    <div class="col-span-1 bg-slate-50 rounded-md p-3">
+                        <div class="text-xs text-slate-400">Humidity</div>
+                        <div id="humidity" class="font-medium mt-1">—</div>
+                    </div>
+                    <div class="col-span-1 bg-slate-50 rounded-md p-3">
+                        <div class="text-xs text-slate-400">Wind</div>
+                        <div id="wind" class="font-medium mt-1">—</div>
+                    </div>
+                </div>
+
+                <div class="mt-4 text-xs text-slate-500">
+                    Data provided by Open-Meteo · No API key required
+                </div>
+            </section>
+
+            <section id="detailsCard" class="bg-white rounded-xl shadow p-4 hidden">
+                <h3 class="text-sm font-semibold text-slate-700 mb-2">More details</h3>
+                <div class="grid grid-cols-2 gap-3 text-sm text-slate-700">
+                    <div>
+                        <div class="text-xs text-slate-400">Pressure</div>
+                        <div id="pressure" class="font-medium">—</div>
+                    </div>
+                    <div>
+                        <div class="text-xs text-slate-400">Visibility</div>
+                        <div id="visibility" class="font-medium">—</div>
+                    </div>
+                    <div>
+                        <div class="text-xs text-slate-400">Sunrise</div>
+                        <div id="sunrise" class="font-medium">—</div>
+                    </div>
+                    <div>
+                        <div class="text-xs text-slate-400">Sunset</div>
+                        <div id="sunset" class="font-medium">—</div>
+                    </div>
+                </div>
+            </section>
+
+            <div class="text-center text-xs text-slate-400">
+                Tip: Use the search or the location button to get current conditions. This app works offline with previously fetched data.
+            </div>
+        </main>
+    </div>
+
+    <script src="script.js"></script>
+
+    <script>
+    (function () {
+        const geocodeBase = 'https://geocoding-api.open-meteo.com/v1/search';
+        const weatherBase = 'https://api.open-meteo.com/v1/forecast';
+        const el = {
+            searchForm: document.getElementById('searchForm'),
+            searchInput: document.getElementById('searchInput'),
+            btnLocate: document.getElementById('btnLocate'),
+            locationName: document.getElementById('locationName'),
+            tempValue: document.getElementById('tempValue'),
+            unitC: document.getElementById('unitC'),
+            unitF: document.getElementById('unitF'),
+            description: document.getElementById('description'),
+            humidity: document.getElementById('humidity'),
+            wind: document.getElementById('wind'),
+            weatherIcon: document.getElementById('weatherIcon'),
+            updatedAt: document.getElementById('updatedAt'),
+            offlineBanner: document.getElementById('offlineBanner'),
+            detailsCard: document.getElementById('detailsCard'),
+            pressure: document.getElementById('pressure'),
+            visibility: document.getElementById('visibility'),
+            sunrise: document.getElementById('sunrise'),
+            sunset: document.getElementById('sunset'),
+            btnInstall: document.getElementById('btnInstall')
+        };
+
+        let preferredUnit = localStorage.getItem('unit') || 'C';
+        setUnitButtons(preferredUnit);
+
+        function setUnitButtons(unit) {
+            if (unit === 'C') {
+                el.unitC.classList.add('text-sky-600', 'font-semibold');
+                el.unitF.classList.remove('text-sky-600', 'font-semibold');
+            } else {
+                el.unitF.classList.add('text-sky-600', 'font-semibold');
+                el.unitC.classList.remove('text-sky-600', 'font-semibold');
+            }
+        }
+
+        function showOfflineBanner(show) {
+            el.offlineBanner.classList.toggle('hidden', !show);
+        }
+
+        window.addEventListener('online', () => showOfflineBanner(false));
+        window.addEventListener('offline', () => showOfflineBanner(true));
+        if (!navigator.onLine) showOfflineBanner(true);
+
+        el.unitC.addEventListener('click', () => {
+            preferredUnit = 'C';
+            localStorage.setItem('unit', 'C');
+            setUnitButtons('C');
+            if (lastFetched) renderWeather(lastFetched);
+        });
+        el.unitF.addEventListener('click', () => {
+            preferredUnit = 'F';
+            localStorage.setItem('unit', 'F');
+            setUnitButtons('F');
+            if (lastFetched) renderWeather(lastFetched);
+        });
+
+        el.searchForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const q = el.searchInput.value.trim();
+            if (!q) return;
+            try {
+                const url = new URL(geocodeBase);
+                url.searchParams.set('name', q);
+                url.searchParams.set('count', '5');
+                const res = await fetch(url);
+                const data = await res.json();
+                if (data && data.results && data.results.length) {
+                    const top = data.results[0];
+                    await fetchAndRender(top.latitude, top.longitude, top.name + (top.country ? ', ' + top.country : ''));
+                    localStorage.setItem('lastLocation', JSON.stringify({lat: top.latitude, lon: top.longitude, name: top.name + (top.country ? ', ' + top.country : '')}));
+                } else {
+                    alert('Location not found. Try a different query.');
+                }
+            } catch (err) {
+                console.error(err);
+                alert('Search failed. Check your connection.');
+            }
+        });
+
+        el.btnLocate.addEventListener('click', () => {
+            if (!navigator.geolocation) {
+                alert('Geolocation is not supported in this browser.');
+                return;
+            }
+            el.locationName.textContent = 'Locating…';
+            navigator.geolocation.getCurrentPosition(async (pos) => {
+                const lat = pos.coords.latitude;
+                const lon = pos.coords.longitude;
+                try {
+                    // reverse geocode to get name (use geocoding search with lat/lon proximity)
+                    const url = new URL(geocodeBase);
+                    url.searchParams.set('latitude', lat);
+                    url.searchParams.set('longitude', lon);
+                    url.searchParams.set('count', '1');
+                    const r = await fetch(url);
+                    const d = await r.json();
+                    const name = (d && d.results && d.results[0]) ? (d.results[0].name + (d.results[0].country ? ', ' + d.results[0].country : '')) : `Lat ${lat.toFixed(2)}, Lon ${lon.toFixed(2)}`;
+                    await fetchAndRender(lat, lon, name);
+                    localStorage.setItem('lastLocation', JSON.stringify({lat, lon, name}));
+                } catch (err) {
+                    console.error(err);
+                    alert('Unable to fetch weather for your location.');
+                }
+            }, (err) => {
+                console.warn(err);
+                alert('Location permission denied or unavailable.');
+            }, { enableHighAccuracy: true, timeout: 10000 });
+        });
+
+        let lastFetched = null;
+
+        async function fetchAndRender(lat, lon, name) {
+            el.locationName.textContent = 'Loading weather…';
+            el.updatedAt.textContent = '—';
+            try {
+                const url = new URL(weatherBase);
+                url.searchParams.set('latitude', lat);
+                url.searchParams.set('longitude', lon);
+                url.searchParams.set('current_weather', 'true');
+                url.searchParams.set('hourly', 'relativehumidity_2m,pressure_msl,visibility,weathercode');
+                url.searchParams.set('daily', 'sunrise,sunset');
+                url.searchParams.set('timezone', 'auto');
+
+                const res = await fetch(url);
+                if (!res.ok) throw new Error('Weather API error');
+                const data = await res.json();
+                data._meta = { name, lat, lon, fetchedAt: new Date().toISOString() };
+                lastFetched = data;
+                // persist for offline use
+                try { localStorage.setItem('weatherCache', JSON.stringify(data)); } catch (e) { /* ignore */ }
+                renderWeather(data);
+            } catch (err) {
+                console.error(err);
+                // try to load cached result
+                const cached = localStorage.getItem('weatherCache');
+                if (cached) {
+                    lastFetched = JSON.parse(cached);
+                    renderWeather(lastFetched, true);
+                    showOfflineBanner(true);
+                } else {
+                    el.locationName.textContent = name || 'Weather unavailable';
+                    el.description.textContent = 'Unable to load weather.';
+                }
+            }
+        }
+
+        function renderWeather(data, fromCache = false) {
+            const cw = data.current_weather;
+            const meta = data._meta || {};
+            const name = meta.name || (data.timezone || 'Current location');
+            el.locationName.textContent = name;
+            const fetched = meta.fetchedAt || new Date().toISOString();
+            const dt = new Date(fetched);
+            el.updatedAt.textContent = 'Updated: ' + dt.toLocaleString();
+
+            // temperature conversion
+            let tempC = cw.temperature;
+            let displayTemp = tempC;
+            if (preferredUnit === 'F') displayTemp = (tempC * 9/5) + 32;
+            el.tempValue.textContent = Math.round(displayTemp) + '°';
+
+            // weather code -> description & icon
+            const wc = cw.weathercode;
+            const wcInfo = weatherCodeMap[wc] || {desc: 'Unknown', icon: '❓'};
+            el.description.textContent = wcInfo.desc;
+            el.weatherIcon.textContent = wcInfo.icon;
+
+            // humidity from hourly by matching time
+            let humidity = '—';
+            if (data.hourly && data.hourly.time && data.hourly.relativehumidity_2m) {
+                const idx = data.hourly.time.indexOf(cw.time);
+                if (idx >= 0) humidity = data.hourly.relativehumidity_2m[idx] + '%';
+            }
+            el.humidity.textContent = humidity;
+
+            el.wind.textContent = cw.windspeed + ' km/h';
+
+            // details (pressure, visibility, sunrise, sunset)
+            if (data.hourly) {
+                let pressure = '—', visibility = '—';
+                const idx = data.hourly.time.indexOf(cw.time);
+                if (idx >= 0) {
+                    if (data.hourly.pressure_msl && data.hourly.pressure_msl[idx] !== undefined) pressure = data.hourly.pressure_msl[idx] + ' hPa';
+                    if (data.hourly.visibility && data.hourly.visibility[idx] !== undefined) visibility = (data.hourly.visibility[idx]/1000).toFixed(1) + ' km';
+                }
+                el.pressure.textContent = pressure;
+                el.visibility.textContent = visibility;
+            } else {
+                el.pressure.textContent = '—';
+                el.visibility.textContent = '—';
+            }
+
+            if (data.daily && data.daily.sunrise && data.daily.sunset) {
+                el.sunrise.textContent = formatTimeShort(data.daily.sunrise[0]);
+                el.sunset.textContent = formatTimeShort(data.daily.sunset[0]);
+                el.detailsCard.classList.remove('hidden');
+            } else {
+                el.sunrise.textContent = '—';
+                el.sunset.textContent = '—';
+                el.detailsCard.classList.add('hidden');
+            }
+
+            if (fromCache) {
+                showOfflineBanner(true);
+            } else {
+                showOfflineBanner(!navigator.onLine);
+            }
+        }
+
+        function formatTimeShort(s) {
+            try {
+                const d = new Date(s);
+                return d.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'});
+            } catch {
+                return s;
+            }
+        }
+
+        const weatherCodeMap = {
+            0: {desc: 'Clear sky', icon: '☀️'},
+            1: {desc: 'Mainly clear', icon: '🌤️'},
+            2: {desc: 'Partly cloudy', icon: '⛅'},
+            3: {desc: 'Overcast', icon: '☁️'},
+            45: {desc: 'Fog', icon: '🌫️'},
+            48: {desc: 'Depositing rime fog', icon: '🌫️'},
+            51: {desc: 'Light drizzle', icon: '🌦️'},
+            53: {desc: 'Moderate drizzle', icon: '🌦️'},
+            55: {desc: 'Dense drizzle', icon: '🌧️'},
+            56: {desc: 'Light freezing drizzle', icon: '🌧️❄️'},
+            57: {desc: 'Dense freezing drizzle', icon: '🌧️❄️'},
+            61: {desc: 'Slight rain', icon: '🌧️'},
+            63: {desc: 'Moderate rain', icon: '🌧️'},
+            65: {desc: 'Heavy rain', icon: '⛈️'},
+            66: {desc: 'Light freezing rain', icon: '🌧️❄️'},
+            67: {desc: 'Heavy freezing rain', icon: '🌧️❄️'},
+            71: {desc: 'Light snow', icon: '🌨️'},
+            73: {desc: 'Moderate snow', icon: '🌨️'},
+            75: {desc: 'Heavy snow', icon: '❄️'},
+            77: {desc: 'Snow grains', icon: '🌨️'},
+            80: {desc: 'Slight rain showers', icon: '🌦️'},
+            81: {desc: 'Moderate rain showers', icon: '🌦️'},
+            82: {desc: 'Violent rain showers', icon: '⛈️'},
+            85: {desc: 'Slight snow showers', icon: '🌨️'},
+            86: {desc: 'Heavy snow showers', icon: '❄️'},
+            95: {desc: 'Thunderstorm', icon: '⛈️'},
+            96: {desc: 'Thunderstorm with slight hail', icon: '⛈️'},
+            99: {desc: 'Thunderstorm with heavy hail', icon: '⛈️'}
+        };
+
+        // Restore last location or auto-locate
+        (async function init() {
+            // Install prompt handling (deferred)
+            let deferredPrompt;
+            window.addEventListener('beforeinstallprompt', (e) => {
+                e.preventDefault();
+                deferredPrompt = e;
+                el.btnInstall.classList.remove('hidden');
+            });
+            el.btnInstall.addEventListener('click', async () => {
+                if (!deferredPrompt) return;
+                deferredPrompt.prompt();
+                const choice = await deferredPrompt.userChoice;
+                deferredPrompt = null;
+                el.btnInstall.classList.add('hidden');
+            });
+
+            // register service worker for PWA caching (sw.js should exist)
+            if ('serviceWorker' in navigator) {
+                try {
+                    await navigator.serviceWorker.register('sw.js');
+                    // console.log('Service worker registered');
+                } catch (err) {
+                    // console.warn('Service worker registration failed', err);
+                }
+            }
+
+            const last = localStorage.getItem('lastLocation');
+            if (last) {
+                try {
+                    const loc = JSON.parse(last);
+                    await fetchAndRender(loc.lat, loc.lon, loc.name);
+                    return;
+                } catch { /* ignore and fallback */ }
+            }
+
+            // fallback: try geolocation
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(async (pos) => {
+                    const lat = pos.coords.latitude;
+                    const lon = pos.coords.longitude;
+                    try {
+                        const url = new URL(geocodeBase);
+                        url.searchParams.set('latitude', lat);
+                        url.searchParams.set('longitude', lon);
+                        url.searchParams.set('count', '1');
+                        const r = await fetch(url);
+                        const d = await r.json();
+                        const name = (d && d.results && d.results[0]) ? (d.results[0].name + (d.results[0].country ? ', ' + d.results[0].country : '')) : `Lat ${lat.toFixed(2)}, Lon ${lon.toFixed(2)}`;
+                        await fetchAndRender(lat, lon, name);
+                        localStorage.setItem('lastLocation', JSON.stringify({lat, lon, name}));
+                    } catch (err) {
+                        console.error(err);
+                        const cached = localStorage.getItem('weatherCache');
+                        if (cached) {
+                            lastFetched = JSON.parse(cached);
+                            renderWeather(lastFetched, true);
+                        } else {
+                            el.locationName.textContent = 'Unable to determine location';
+                            el.description.textContent = 'Please search for a city.';
+                        }
+                    }
+                }, () => {
+                    // permission denied or unavailable — try cached
+                    const cached = localStorage.getItem('weatherCache');
+                    if (cached) {
+                        lastFetched = JSON.parse(cached);
+                        renderWeather(lastFetched, true);
+                    } else {
+                        el.locationName.textContent = 'Location access denied';
+                        el.description.textContent = 'Use the search to get weather for a city.';
+                    }
+                }, {timeout: 8000});
+            } else {
+                el.locationName.textContent = 'Geolocation not supported';
+            }
+        })();
+    })();
+    </script>
+</body>
+</html>
